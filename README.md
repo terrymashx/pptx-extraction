@@ -1,28 +1,75 @@
-# PPTX Extractor — Azure Function App
+# PPTX Extractor — MCP Server
 
-HTTP-triggered Azure Function that extracts structured content (titles, text, tables) from `.pptx` files. Designed to be registered as a plugin action in a **Microsoft Copilot Agent**.
+MCP server that extracts structured content (titles, text blocks, tables) from `.pptx` files.
+Runs locally and is exposed to the internet via **Microsoft Dev Tunnel** for use with a **Microsoft Copilot Agent**.
 
-## Endpoint
+## Architecture
 
 ```
-POST /api/extract-pptx
-Content-Type: multipart/form-data
-x-functions-key: <your-key>
-
-file: <binary .pptx>
+Copilot Agent (Copilot Studio)
+        │  MCP over HTTP
+        ▼
+  Dev Tunnel URL  ──►  localhost:8000  ──►  server.py  ──►  extractor.py
 ```
 
-### Response example
+## Quick start
+
+### 1. Install dependencies
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2. Start the MCP server
+
+```bash
+python server.py
+# Server running on http://localhost:8000/mcp
+```
+
+### 3. Expose via Microsoft Dev Tunnel
+
+Install the CLI: https://aka.ms/devtunnel/download
+
+```bash
+devtunnel login               # sign in with Microsoft account
+devtunnel host -p 8000 --allow-anonymous
+```
+
+Copy the tunnel URL — it looks like:
+`https://abc123-8000.euw.devtunnels.ms`
+
+Your MCP endpoint will be:
+`https://abc123-8000.euw.devtunnels.ms/mcp`
+
+### 4. Register in Microsoft Copilot Studio
+
+1. Open your Copilot agent → **Actions** → **Add an action** → **Model Context Protocol**
+2. Paste the MCP endpoint URL: `https://<tunnel-url>/mcp`
+3. The agent will discover the `extract_pptx` tool automatically
+
+## Tool reference
+
+### `extract_pptx`
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `file_base64` | string | Base64-encoded `.pptx` file |
+| `filename` | string | Original filename (optional, default: `upload.pptx`) |
+
+**Returns** — JSON string:
 
 ```json
 {
   "filename": "deck.pptx",
-  "slide_count": 3,
+  "slide_count": 2,
   "slides": [
     {
       "slide_number": 1,
       "title": "Welcome",
-      "text_blocks": ["This is the intro slide", "Key points here"],
+      "text_blocks": ["Intro text", "Key points"],
       "tables": []
     },
     {
@@ -30,65 +77,22 @@ file: <binary .pptx>
       "title": "Data",
       "text_blocks": [],
       "tables": [
-        [["Header A", "Header B"], ["Row 1A", "Row 1B"]]
+        [["Header A", "Header B"], ["Value 1", "Value 2"]]
       ]
     }
   ]
 }
 ```
 
-## Local development
+## Test locally (without Copilot)
 
-```bash
-cd pptx-extractor
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt azure-functions-core-tools
-func start
+```python
+import base64, json
+from extractor import extract_pptx
+
+with open("my-deck.pptx", "rb") as f:
+    data = f.read()
+
+result = extract_pptx(data, "my-deck.pptx")
+print(json.dumps(result, indent=2))
 ```
-
-Test with curl:
-```bash
-curl -X POST http://localhost:7071/api/extract-pptx \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@your-deck.pptx"
-```
-
-## Deploy to Azure
-
-### 1. Create infrastructure (once)
-
-```bash
-az group create --name rg-pptx-extractor --location westeurope
-
-az storage account create \
-  --name stpptxextractor \
-  --resource-group rg-pptx-extractor \
-  --sku Standard_LRS
-
-az functionapp create \
-  --name <YOUR_APP_NAME> \
-  --resource-group rg-pptx-extractor \
-  --storage-account stpptxextractor \
-  --consumption-plan-location westeurope \
-  --runtime python \
-  --runtime-version 3.11 \
-  --functions-version 4 \
-  --os-type linux
-```
-
-### 2. Add GitHub secrets
-
-| Secret | Value |
-|--------|-------|
-| `AZURE_FUNCTIONAPP_NAME` | Your function app name |
-| `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` | Download from Azure Portal → Function App → Get publish profile |
-
-Push to `main` to trigger deployment automatically.
-
-## Register in Microsoft Copilot Studio
-
-1. Open your Copilot agent in **Copilot Studio**
-2. Go to **Actions** → **Add an action** → **New action from OpenAPI**
-3. Upload [`openapi.json`](./openapi.json) (update the `servers.url` with your function app URL first)
-4. Add an **API key** connection using the Function App host key
-5. The agent can now call `extractPptx` as a tool action

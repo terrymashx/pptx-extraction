@@ -5,11 +5,10 @@ from typing import Any
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
-from pptx.util import Pt
 
 
-def extract_pptx(stream: io.IOBase, filename: str) -> dict[str, Any]:
-    prs = Presentation(stream)
+def extract_pptx(data: bytes, filename: str) -> dict[str, Any]:
+    prs = Presentation(io.BytesIO(data))
 
     slides = []
     for idx, slide in enumerate(prs.slides, start=1):
@@ -35,7 +34,6 @@ def _extract_slide(index: int, slide) -> dict[str, Any]:
         if not shape.has_text_frame:
             continue
 
-        # Skip the title shape — already captured above
         if shape == slide.shapes.title:
             continue
 
