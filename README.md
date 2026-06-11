@@ -83,16 +83,3 @@ Your MCP endpoint will be:
   ]
 }
 ```
-
-## Test locally (without Copilot)
-
-```python
-import base64, json
-from extractor import extract_pptx
-
-with open("my-deck.pptx", "rb") as f:
-    data = f.read()
-
-result = extract_pptx(data, "my-deck.pptx")
-print(json.dumps(result, indent=2))
-```
